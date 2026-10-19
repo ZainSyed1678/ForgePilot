@@ -45,3 +45,27 @@ def test_unknown_tool_returns_error_to_model(tmp_path):
     ])
     BasicAgent(model, RepositoryTools(tmp_path)).attempt("No")
     assert "unknown tool" in model.messages[-1]["content"]
+
+
+def test_chat_model_accumulates_reported_tokens(monkeypatch):
+    import io
+    from forgepilot import agent
+
+    monkeypatch.setenv("FORGEPILOT_MODEL", "test-model")
+    monkeypatch.setenv("FORGEPILOT_API_KEY", "test-key")
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_urlopen(request, timeout):
+        assert timeout == 60
+        return Response(json.dumps({"choices": [{"message": {"content": "ok"}}],
+                                    "usage": {"prompt_tokens": 7, "completion_tokens": 3}}).encode())
+
+    monkeypatch.setattr(agent, "urlopen", fake_urlopen)
+    model = agent.ChatModel()
+    assert model.complete([{"role": "user", "content": "hello"}])["content"] == "ok"
+    assert (model.prompt_tokens, model.completion_tokens) == (7, 3)
+    assert model.usage_reported is True

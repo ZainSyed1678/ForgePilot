@@ -64,10 +64,11 @@ class RepositoryTools:
         if not argv:
             raise ValueError("command must not be empty")
         container_name = f"forgepilot-{uuid.uuid4().hex}"
+        user = f"{os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") else "65534:65534"
         command = ["docker", "run", "--rm", "--name", container_name, "--network", "none", "--pids-limit", "128",
                    "--memory", f"{self.memory_mb}m", "--cpus", str(self.cpus),
                    "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
-                   "--user", "65534:65534", "-v", f"{self.root}:/workspace:rw",
+                   "--user", user, "-v", f"{self.root}:/workspace:rw",
                    "-w", "/workspace", self.image, *argv]
         try:
             completed = subprocess.run(command, capture_output=True, text=True,

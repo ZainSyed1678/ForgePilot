@@ -1,11 +1,8 @@
 """Architectures compared on the same tools and budgets."""
 
-from forgepilot.agent import AgentResult, AgentSession, BasicAgent, initial_messages
+from forgepilot.agent import (AgentResult, AgentSession, BasicAgent, MAX_STEPS,
+                              MAX_TOOL_CALLS, initial_messages)
 from forgepilot.tools import RepositoryTools
-
-MAX_STEPS = 12
-MAX_TOOL_CALLS = 24
-
 
 class PlannerExecutorCritic:
     def __init__(self, model, tools: RepositoryTools):

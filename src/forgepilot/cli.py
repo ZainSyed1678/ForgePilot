@@ -32,10 +32,15 @@ def main() -> int:
     attempt = sub.add_parser("attempt")
     attempt.add_argument("task_id")
     attempt.add_argument("--architecture", choices=ARCHITECTURES, default="basic")
-    attempt.add_argument("--output", type=Path, default=Path("results/runs.jsonl"))
+    attempt.add_argument("--repeats", type=int, default=1)
+    attempt.add_argument("--output", type=Path, default=Path("results/experiments.sqlite3"))
     compare = sub.add_parser("compare")
     compare.add_argument("--task", action="append", dest="task_ids")
-    compare.add_argument("--output", type=Path, default=Path("results/runs.jsonl"))
+    compare.add_argument("--repeats", type=int, default=1)
+    compare.add_argument("--output", type=Path, default=Path("results/experiments.sqlite3"))
+    analyze = sub.add_parser("analyze")
+    analyze.add_argument("--database", type=Path, default=Path("results/experiments.sqlite3"))
+    analyze.add_argument("--output-dir", type=Path, default=Path("results/analysis"))
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
     try:
@@ -44,16 +49,29 @@ def main() -> int:
             return 0
         if args.action == "attempt":
             import json
-            print(json.dumps(run_task(args.task_id, args.output, architecture=args.architecture), indent=2))
+            if args.repeats <= 0:
+                raise ValueError("repeats must be positive")
+            for repeat in range(1, args.repeats + 1):
+                result = run_task(args.task_id, args.output, architecture=args.architecture, repeat_index=repeat)
+                print(json.dumps({"run_id": result["run_id"], "task_id": result["task_id"],
+                                  "architecture": result["architecture"], "passed": result["passed"]}))
             return 0
         if args.action == "compare":
             import json
+            if args.repeats <= 0:
+                raise ValueError("repeats must be positive")
             task_ids = args.task_ids or [task.id for task in load_tasks()]
             for task_id in task_ids:
-                for architecture in ARCHITECTURES:
-                    result = run_task(task_id, args.output, architecture=architecture)
-                    print(json.dumps({"task_id": task_id, "architecture": architecture,
-                                      "passed": result["passed"]}))
+                for repeat in range(1, args.repeats + 1):
+                    for architecture in ARCHITECTURES:
+                        result = run_task(task_id, args.output, architecture=architecture, repeat_index=repeat)
+                        print(json.dumps({"run_id": result["run_id"], "task_id": task_id,
+                                          "architecture": architecture, "passed": result["passed"]}))
+            return 0
+        if args.action == "analyze":
+            import json
+            from forgepilot.analysis import summarize
+            print(json.dumps(summarize(args.database, args.output_dir), indent=2))
             return 0
         tools = RepositoryTools(args.repo)
         if args.action == "files":

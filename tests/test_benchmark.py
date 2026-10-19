@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from forgepilot.benchmark import grade, load_tasks, prepare
+from forgepilot.benchmark import grade, load_tasks, prepare, run_tests
 from forgepilot.tools import CommandResult, RepositoryTools
 
 
@@ -14,6 +14,7 @@ def test_fixture_starts_with_failing_test(task, tmp_path):
                                cwd=workspace, capture_output=True, text=True)
     assert completed.returncode != 0
     assert "FAILED" in completed.stdout
+    assert "1 passed" in completed.stdout
 
 
 def test_task_ids_are_unique():
@@ -34,6 +35,30 @@ def test_grader_accepts_fix_and_rejects_original(tmp_path, monkeypatch):
 
     monkeypatch.setattr(RepositoryTools, "pytest", local_pytest)
     tools = RepositoryTools(workspace)
-    assert grade(task, workspace, tools)["passed"] is False
+    baseline = run_tests(workspace, tools, ".baseline.xml")
+    assert baseline["verified"] is True
+    assert sum(value == "passed" for value in baseline["cases"].values()) == 1
+    initial = grade(task, workspace, tools, baseline)
+    assert initial["passed"] is False
     tools.write_file("calculator.py", "def total(values):\n    return sum(values)\n")
-    assert grade(task, workspace, tools)["passed"] is True
+    fixed = grade(task, workspace, tools, baseline)
+    assert fixed["passed"] is True
+    assert fixed["regressions"] == 0
+    tools.write_file("calculator.py", "def total(values):\n    return 0\n")
+    broken = grade(task, workspace, tools, baseline)
+    assert broken["regressions"] == 1
+
+
+def test_grader_rejects_missing_baseline_cases(tmp_path, monkeypatch):
+    from forgepilot import benchmark
+
+    task = next(task for task in load_tasks() if task.id == "negative_total")
+    workspace = tmp_path / "repo"
+    prepare(task, workspace)
+    baseline = {"verified": True, "cases": {"tests.test_calculator::test_positive_total": "passed"}}
+    monkeypatch.setattr(benchmark, "run_tests", lambda *args: {
+        "verified": True, "cases": {"tests.test_acceptance::test_ok": "passed"},
+        "returncode": 0, "stdout": "1 passed", "stderr": ""})
+    result = grade(task, workspace, RepositoryTools(workspace), baseline)
+    assert result["passed"] is False
+    assert result["regressions"] == 1

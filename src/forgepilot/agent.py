@@ -18,6 +18,8 @@ TOOLS = [
     {"name": "git_status", "description": "Inspect Git status", "parameters": {"type": "object", "properties": {}}},
 ]
 SCHEMAS = [{"type": "function", "function": item} for item in TOOLS]
+MAX_STEPS = 12
+MAX_TOOL_CALLS = 24
 
 
 class ChatModel:
@@ -25,6 +27,10 @@ class ChatModel:
         self.url = os.getenv("FORGEPILOT_API_URL", "https://api.openai.com/v1/chat/completions")
         self.model = os.environ["FORGEPILOT_MODEL"]
         self.key = os.environ["FORGEPILOT_API_KEY"]
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.usage_reported = False
+        self.usage_samples = 0
 
     def complete(self, messages: list[dict], *, tools_enabled: bool = True) -> dict:
         body = {"model": self.model, "messages": messages}
@@ -35,6 +41,12 @@ class ChatModel:
             "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
         with urlopen(request, timeout=60) as response:
             data = json.load(response)
+        usage = data.get("usage") or {}
+        if "prompt_tokens" in usage and "completion_tokens" in usage:
+            self.prompt_tokens += usage["prompt_tokens"]
+            self.completion_tokens += usage["completion_tokens"]
+            self.usage_reported = True
+            self.usage_samples += 1
         return data["choices"][0]["message"]
 
 
@@ -55,6 +67,7 @@ class AgentSession:
         self.max_steps, self.max_tool_calls = max_steps, max_tool_calls
         self.steps = 0
         self.tool_calls = 0
+        self.failed_tool_calls = 0
 
     def complete(self, messages: list[dict], *, tools_enabled: bool = True) -> dict | None:
         if self.steps >= self.max_steps:
@@ -94,9 +107,13 @@ class AgentSession:
             try:
                 fn = call["function"]
                 result = self.call(fn["name"], json.loads(fn["arguments"]))
-                failed = failed or isinstance(result, dict) and result.get("returncode", 0) != 0
+                tool_failed = isinstance(result, dict) and result.get("returncode", 0) != 0
+                if tool_failed:
+                    self.failed_tool_calls += 1
+                failed = failed or tool_failed
                 output = json.dumps(result)[:12000]
             except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
+                self.failed_tool_calls += 1
                 failed = True
                 output = json.dumps({"error": str(exc)})
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": output})
@@ -111,7 +128,7 @@ def initial_messages(task: str) -> list[dict]:
 
 
 class BasicAgent:
-    def __init__(self, model, tools: RepositoryTools, *, max_steps: int = 12, max_tool_calls: int = 24):
+    def __init__(self, model, tools: RepositoryTools, *, max_steps: int = MAX_STEPS, max_tool_calls: int = MAX_TOOL_CALLS):
         self.session = AgentSession(model, tools, max_steps, max_tool_calls)
 
     def attempt(self, task: str) -> AgentResult:
