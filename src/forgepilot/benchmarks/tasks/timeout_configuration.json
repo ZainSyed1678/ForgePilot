@@ -1,0 +1,17 @@
+{
+  "id": "timeout_configuration",
+  "prompt": "A fresh checkout crashes while loading the worker timeout, even though configured environments work. Investigate the configuration path and fix it.",
+  "files": {
+    "worker.py": "import os\nfrom settings import DEFAULT_TIMEOUT\n\ndef timeout_seconds():\n    return int(os.getenv(\"JOB_TIMEOUT_SECONDS\"))\n",
+    "settings.py": "DEFAULT_TIMEOUT = 30\n",
+    "docs/configuration.md": "JOB_TIMEOUT_SECONDS is optional. When unset or blank, use DEFAULT_TIMEOUT from settings.py. A nonblank numeric value overrides the default.\n",
+    "tests/test_worker.py": "from worker import timeout_seconds\n\ndef test_override(monkeypatch):\n    monkeypatch.setenv(\"JOB_TIMEOUT_SECONDS\", \"12\")\n    assert timeout_seconds() == 12\n"
+  },
+  "acceptance": "from worker import timeout_seconds\n\ndef test_timeout_contract(monkeypatch):\n    monkeypatch.delenv(\"JOB_TIMEOUT_SECONDS\", raising=False)\n    assert timeout_seconds() == 30\n    monkeypatch.setenv(\"JOB_TIMEOUT_SECONDS\", \"  \")\n    assert timeout_seconds() == 30\n    monkeypatch.setenv(\"JOB_TIMEOUT_SECONDS\", \"45\")\n    assert timeout_seconds() == 45\n",
+  "observability": "partial",
+  "failure_type": "dependency_discovery",
+  "evidence_paths": [
+    "settings.py",
+    "docs/configuration.md"
+  ]
+}

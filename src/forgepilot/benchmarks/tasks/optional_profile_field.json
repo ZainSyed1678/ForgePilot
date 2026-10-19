@@ -1,0 +1,15 @@
+{
+  "id": "optional_profile_field",
+  "prompt": "The profile importer crashes for some otherwise valid rows. Investigate the repository contract and fix the importer while preserving the behavior for supplied nicknames.",
+  "files": {
+    "profiles.py": "def display_name(row):\n    return row[\"nickname\"].strip() or row[\"name\"]\n",
+    "docs/imports.md": "Profile rows require name. nickname is optional; when absent or blank, display_name must use name. A supplied nickname takes priority after trimming whitespace.\n",
+    "tests/test_profiles.py": "from profiles import display_name\n\ndef test_supplied_nickname():\n    assert display_name({\"name\": \"Ada\", \"nickname\": \"  Ace  \"}) == \"Ace\"\n"
+  },
+  "acceptance": "from profiles import display_name\n\ndef test_optional_nickname_contract():\n    assert display_name({\"name\": \"Ada\"}) == \"Ada\"\n    assert display_name({\"name\": \"Ada\", \"nickname\": \"  \"}) == \"Ada\"\n    assert display_name({\"name\": \"Ada\", \"nickname\": \"  Ace  \"}) == \"Ace\"\n",
+  "observability": "partial",
+  "failure_type": "requirements_discovery",
+  "evidence_paths": [
+    "docs/imports.md"
+  ]
+}

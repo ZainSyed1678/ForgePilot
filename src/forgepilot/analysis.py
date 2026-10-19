@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -18,6 +19,10 @@ def summarize(database: Path, output_dir: Path) -> dict:
         runs = pd.read_sql_query("SELECT * FROM runs", connection)
     if runs.empty:
         raise ValueError("database has no runs")
+    raw = runs["raw_json"].map(json.loads)
+    runs["observability"] = raw.map(lambda item: item.get("observability", "full"))
+    runs["evidence_coverage"] = raw.map(lambda item: item.get("evidence_coverage"))
+    runs["inspection_calls"] = raw.map(lambda item: item.get("inspection_calls"))
     rows = []
     coverage = {}
     for architecture, part in runs.groupby("architecture", sort=True):
@@ -45,6 +50,19 @@ def summarize(database: Path, output_dir: Path) -> dict:
     summary = pd.DataFrame(rows)
     output_dir.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output_dir / "summary.csv", index=False)
+    observability_rows = []
+    for (architecture, level), part in runs.groupby(["architecture", "observability"], sort=True):
+        verified = part[part["passed"].notna()]
+        observed = part.dropna(subset=["evidence_coverage"])
+        inspected = part.dropna(subset=["inspection_calls"])
+        observability_rows.append({
+            "architecture": architecture, "observability": level,
+            "runs": len(part), "verified": len(verified),
+            "success_rate": float(verified["passed"].mean()) if len(verified) else None,
+            "mean_evidence_coverage": float(observed["evidence_coverage"].mean()) if len(observed) else None,
+            "mean_inspection_calls": float(inspected["inspection_calls"].mean()) if len(inspected) else None,
+        })
+    pd.DataFrame(observability_rows).to_csv(output_dir / "observability.csv", index=False)
     verified_rows = summary.dropna(subset=["success_rate"])
     if not verified_rows.empty:
         figure, axis = plt.subplots(figsize=(7, 4))
@@ -75,6 +93,16 @@ def summarize(database: Path, output_dir: Path) -> dict:
                      f"{rate(row['regression_rate'])} | {rate(row['recovery_rate'])} | "
                      f"{number(row['mean_agent_seconds'])} | {number(row['mean_tokens'])} | "
                      f"{row['token_reported_runs']} |")
+    lines.extend(["", "## Information availability", "",
+                  "Evidence coverage is the fraction of listed clue files read with the read_file tool. "
+                  "Other forms of investigation are not counted.", "",
+                  "| Architecture | Availability | Runs | Verified | Success | Evidence read | Mean inspection calls |",
+                  "|---|---|---:|---:|---:|---:|---:|"])
+    for row in observability_rows:
+        lines.append(f"| {row['architecture']} | {row['observability']} | {row['runs']} | "
+                     f"{row['verified']} | {rate(row['success_rate'])} | "
+                     f"{rate(row['mean_evidence_coverage'])} | "
+                     f"{number(row['mean_inspection_calls'])} |")
     (output_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"runs": len(runs), "verified": int(runs["passed"].notna().sum()),
             "matched_coverage": matched, "output_dir": str(output_dir)}

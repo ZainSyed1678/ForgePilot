@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.request import Request, urlopen
 
 from forgepilot.tools import RepositoryTools
@@ -68,6 +69,8 @@ class AgentSession:
         self.steps = 0
         self.tool_calls = 0
         self.failed_tool_calls = 0
+        self.files_read: set[str] = set()
+        self.inspection_calls = 0
 
     def complete(self, messages: list[dict], *, tools_enabled: bool = True) -> dict | None:
         if self.steps >= self.max_steps:
@@ -81,9 +84,13 @@ class AgentSession:
         if not isinstance(arguments, dict):
             raise ValueError("tool arguments must be an object")
         if name == "list_files":
+            self.inspection_calls += 1
             return self.tools.list_files()
         if name == "read_file":
-            return self.tools.read_file(arguments["path"])
+            content = self.tools.read_file(arguments["path"])
+            self.inspection_calls += 1
+            self.files_read.add(Path(arguments["path"]).as_posix().removeprefix("./"))
+            return content
         if name == "write_file":
             self.tools.write_file(arguments["path"], arguments["content"])
             return "written"
@@ -92,6 +99,7 @@ class AgentSession:
         if name == "pytest":
             return self.tools.pytest(*arguments.get("args", [])).__dict__
         if name == "git_status":
+            self.inspection_calls += 1
             return self.tools.git("status", "--short").__dict__
         raise ValueError(f"unknown tool: {name}")
 

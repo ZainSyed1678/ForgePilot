@@ -28,7 +28,8 @@ def main() -> int:
     tests = sub.add_parser("test")
     tests.add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("patch")
-    sub.add_parser("tasks")
+    tasks_command = sub.add_parser("tasks")
+    tasks_command.add_argument("--observability", choices=("full", "partial"))
     attempt = sub.add_parser("attempt")
     attempt.add_argument("task_id")
     attempt.add_argument("--architecture", choices=ARCHITECTURES, default="basic")
@@ -36,6 +37,7 @@ def main() -> int:
     attempt.add_argument("--output", type=Path, default=Path("results/experiments.sqlite3"))
     compare = sub.add_parser("compare")
     compare.add_argument("--task", action="append", dest="task_ids")
+    compare.add_argument("--observability", choices=("full", "partial"))
     compare.add_argument("--repeats", type=int, default=1)
     compare.add_argument("--output", type=Path, default=Path("results/experiments.sqlite3"))
     analyze = sub.add_parser("analyze")
@@ -45,7 +47,8 @@ def main() -> int:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
     try:
         if args.action == "tasks":
-            print("\n".join(task.id for task in load_tasks()))
+            print("\n".join(task.id for task in load_tasks()
+                            if not args.observability or task.observability == args.observability))
             return 0
         if args.action == "attempt":
             import json
@@ -60,7 +63,11 @@ def main() -> int:
             import json
             if args.repeats <= 0:
                 raise ValueError("repeats must be positive")
-            task_ids = args.task_ids or [task.id for task in load_tasks()]
+            selected = [task.id for task in load_tasks()
+                        if not args.observability or task.observability == args.observability]
+            task_ids = args.task_ids or selected
+            if args.observability and any(task_id not in selected for task_id in task_ids):
+                raise ValueError("selected task does not match observability filter")
             for task_id in task_ids:
                 for repeat in range(1, args.repeats + 1):
                     for architecture in ARCHITECTURES:

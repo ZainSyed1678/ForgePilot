@@ -69,12 +69,20 @@ def run_task(task_id: str, output: Path, *, architecture: str = "basic", model=N
                      "test_total": None, "regressions": None, "baseline_passed": None,
                      "cases": {}, "returncode": None, "stdout": "", "stderr": baseline["stderr"]}
         tool_failures = agent.session.failed_tool_calls if agent else None
+        files_read = sorted(agent.session.files_read) if agent else []
+        evidence_paths = set(task.evidence_paths)
+        evidence_coverage = (len(evidence_paths.intersection(files_read)) / len(evidence_paths)
+                             if evidence_paths and agent else None)
         passed = final["passed"]
         usage_reported = (active_model is not None
                           and getattr(active_model, "usage_samples", 0) > tokens_before[2])
         record = {
             "run_id": str(uuid.uuid4()),
             "task_id": task.id, "task_sha256": task_hash, "architecture": architecture,
+            "observability": task.observability, "failure_type": task.failure_type,
+            "evidence_paths": sorted(evidence_paths), "files_read": files_read,
+            "inspection_calls": agent.session.inspection_calls if agent else None,
+            "evidence_coverage": evidence_coverage,
             "time_utc": datetime.now(timezone.utc).isoformat(),
             "repeat_index": repeat_index,
             "model": getattr(active_model, "model", os.getenv("FORGEPILOT_MODEL")),

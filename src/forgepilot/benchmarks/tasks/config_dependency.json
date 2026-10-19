@@ -6,5 +6,8 @@
     "settings.py": "DEFAULT_RETRIES = \"three\"\n",
     "tests/test_app.py": "from app import retry_limit\n\ndef test_default_retries():\n    assert retry_limit() == 3\n\ndef test_retry_limit_exists():\n    assert callable(retry_limit)\n"
   },
-  "acceptance": "from app import retry_limit\n\ndef test_retry_limit_is_integer():\n    assert retry_limit() == 3\n    assert isinstance(retry_limit(), int)\n"
+  "acceptance": "from app import retry_limit\n\ndef test_retry_limit_is_integer():\n    assert retry_limit() == 3\n    assert isinstance(retry_limit(), int)\n",
+  "observability": "full",
+  "failure_type": "dependency",
+  "evidence_paths": []
 }

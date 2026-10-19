@@ -6,7 +6,7 @@ from forgepilot.benchmark import grade, load_tasks, prepare, run_tests
 from forgepilot.tools import CommandResult, RepositoryTools
 
 
-@pytest.mark.parametrize("task", load_tasks(), ids=lambda task: task.id)
+@pytest.mark.parametrize("task", [task for task in load_tasks() if task.observability == "full"], ids=lambda task: task.id)
 def test_fixture_starts_with_failing_test(task, tmp_path):
     workspace = tmp_path / "repo"
     prepare(task, workspace)
@@ -19,8 +19,9 @@ def test_fixture_starts_with_failing_test(task, tmp_path):
 
 def test_task_ids_are_unique():
     tasks = load_tasks()
-    assert len(tasks) == 5
-    assert len({task.id for task in tasks}) == 5
+    assert len(tasks) == 9
+    assert len({task.id for task in tasks}) == 9
+    assert sum(task.observability == "partial" for task in tasks) == 4
 
 
 def test_grader_accepts_fix_and_rejects_original(tmp_path, monkeypatch):
@@ -62,3 +63,26 @@ def test_grader_rejects_missing_baseline_cases(tmp_path, monkeypatch):
     result = grade(task, workspace, RepositoryTools(workspace), baseline)
     assert result["passed"] is False
     assert result["regressions"] == 1
+
+
+@pytest.mark.parametrize("task", [task for task in load_tasks() if task.observability == "partial"], ids=lambda task: task.id)
+def test_partial_task_starts_without_revealing_acceptance(tmp_path, task):
+    workspace = tmp_path / "repo"
+    prepare(task, workspace)
+    assert not (workspace / "tests" / "test_acceptance.py").exists()
+    assert all((workspace / path).exists() for path in task.evidence_paths)
+    completed = subprocess.run(["python", "-m", "pytest", "-q", "tests"],
+                               cwd=workspace, capture_output=True, text=True)
+    assert completed.returncode == 0
+    assert "1 passed" in completed.stdout
+
+
+def test_partial_task_requires_discoverable_evidence(tmp_path):
+    import json
+
+    (tmp_path / "broken.json").write_text(json.dumps({
+        "id": "broken", "prompt": "Investigate", "files": {},
+        "acceptance": "def test_ok(): assert True", "observability": "partial",
+        "evidence_paths": []}))
+    with pytest.raises(ValueError, match="lacks evidence"):
+        load_tasks(tmp_path)

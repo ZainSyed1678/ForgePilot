@@ -5,5 +5,8 @@
     "stats.py": "def average(values):\n    return sum(values) / len(values)\n",
     "tests/test_stats.py": "from stats import average\n\ndef test_empty():\n    assert average([]) == 0\n\ndef test_nonempty():\n    assert average([2, 4]) == 3\n"
   },
-  "acceptance": "from stats import average\n\ndef test_average_cases():\n    assert average([]) == 0\n    assert average([2, 4, 6]) == 4\n"
+  "acceptance": "from stats import average\n\ndef test_average_cases():\n    assert average([]) == 0\n    assert average([2, 4, 6]) == 4\n",
+  "observability": "full",
+  "failure_type": "runtime",
+  "evidence_paths": []
 }

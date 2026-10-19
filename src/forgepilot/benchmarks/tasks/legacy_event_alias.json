@@ -1,0 +1,17 @@
+{
+  "id": "legacy_event_alias",
+  "prompt": "Some webhook events that older clients still send are no longer routed. Investigate the compatibility files and restore the expected routing.",
+  "files": {
+    "router.py": "from contracts import CANONICAL_EVENTS\n\ndef route(event_name):\n    return CANONICAL_EVENTS.get(event_name)\n",
+    "contracts.py": "CANONICAL_EVENTS = {\"payment_succeeded\": \"billing\", \"user_created\": \"accounts\"}\nLEGACY_ALIASES = {\"payment.completed\": \"payment_succeeded\"}\n",
+    "docs/compatibility.md": "Older clients may send payment.completed. It is an alias for payment_succeeded and must reach billing. Unknown event names remain unrouted.\n",
+    "tests/test_router.py": "from router import route\n\ndef test_canonical_event():\n    assert route(\"payment_succeeded\") == \"billing\"\n"
+  },
+  "acceptance": "from router import route\n\ndef test_legacy_and_unknown_events():\n    assert route(\"payment.completed\") == \"billing\"\n    assert route(\"payment_succeeded\") == \"billing\"\n    assert route(\"unknown\") is None\n",
+  "observability": "partial",
+  "failure_type": "compatibility_discovery",
+  "evidence_paths": [
+    "contracts.py",
+    "docs/compatibility.md"
+  ]
+}

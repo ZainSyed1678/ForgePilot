@@ -20,13 +20,23 @@ class Task:
     prompt: str
     files: dict[str, str]
     acceptance: str
+    observability: str = "full"
+    failure_type: str = "bug"
+    evidence_paths: tuple[str, ...] = ()
 
 
 def load_tasks(directory: Path = TASKS_DIR) -> list[Task]:
     tasks = []
     for file in sorted(directory.glob("*.json")):
         data = json.loads(file.read_text(encoding="utf-8"))
-        tasks.append(Task(**data))
+        task = Task(**data)
+        if task.observability not in {"full", "partial"}:
+            raise ValueError(f"invalid observability for {task.id}")
+        if task.observability == "partial" and not task.evidence_paths:
+            raise ValueError(f"partial task lacks evidence paths: {task.id}")
+        if any(path not in task.files for path in task.evidence_paths):
+            raise ValueError(f"evidence path missing from fixture {task.id}")
+        tasks.append(task)
     if len({task.id for task in tasks}) != len(tasks):
         raise ValueError("duplicate task id")
     return tasks

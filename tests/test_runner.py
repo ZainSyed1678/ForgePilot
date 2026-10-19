@@ -82,3 +82,20 @@ def test_grading_error_is_recorded_as_unverified(tmp_path, monkeypatch):
     result = runner.run_task(load_tasks()[0].id, tmp_path / "runs.sqlite3", model=object())
     assert result["passed"] is None
     assert "report unavailable" in result["stderr"]
+
+
+def test_runner_records_partial_task_discovery(tmp_path, monkeypatch):
+    task = next(task for task in load_tasks() if task.id == "optional_profile_field")
+    monkeypatch.setattr(runner, "run_tests", baseline)
+    monkeypatch.setattr(runner, "grade", lambda *args: grade_result(True))
+
+    def observed_attempt(self, prompt):
+        self.session.files_read.add("docs/imports.md")
+        self.session.inspection_calls = 1
+        return AgentResult("Fixed", 2, "finished")
+
+    monkeypatch.setattr(runner.ARCHITECTURES["basic"], "attempt", observed_attempt)
+    result = runner.run_task(task.id, tmp_path / "runs.sqlite3", model=object())
+    assert result["observability"] == "partial"
+    assert result["evidence_coverage"] == 1.0
+    assert result["files_read"] == ["docs/imports.md"]

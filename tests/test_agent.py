@@ -69,3 +69,16 @@ def test_chat_model_accumulates_reported_tokens(monkeypatch):
     assert model.complete([{"role": "user", "content": "hello"}])["content"] == "ok"
     assert (model.prompt_tokens, model.completion_tokens) == (7, 3)
     assert model.usage_reported is True
+
+
+def test_session_records_files_read_for_discovery(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contract.md").write_text("clue")
+    model = FakeModel([
+        {"role": "assistant", "content": None, "tool_calls": [call("read_file", {"path": "docs/contract.md"})]},
+        {"role": "assistant", "content": "Done"},
+    ])
+    agent = BasicAgent(model, RepositoryTools(tmp_path))
+    agent.attempt("Investigate")
+    assert agent.session.files_read == {"docs/contract.md"}
+    assert agent.session.inspection_calls == 1
