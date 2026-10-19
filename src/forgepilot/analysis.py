@@ -7,6 +7,19 @@ import sqlite3
 from pathlib import Path
 
 
+def task_complexity(task_id: str) -> str:
+    """Predeclared fixture grouping; independent of an agent's outcome."""
+    from forgepilot.benchmark import load_tasks
+
+    tasks = {task.id: task for task in load_tasks()}
+    task = tasks.get(task_id)
+    if task is None:
+        return "unknown"
+    source_files = [name for name in task.files if not name.startswith("tests/")
+                    and not name.lower().endswith(".md")]
+    return "multi-file" if len(source_files) > 1 else "single-file"
+
+
 def summarize(database: Path, output_dir: Path) -> dict:
     import matplotlib
     matplotlib.use("Agg")
@@ -23,6 +36,9 @@ def summarize(database: Path, output_dir: Path) -> dict:
     runs["observability"] = raw.map(lambda item: item.get("observability", "full"))
     runs["evidence_coverage"] = raw.map(lambda item: item.get("evidence_coverage"))
     runs["inspection_calls"] = raw.map(lambda item: item.get("inspection_calls"))
+    runs["failure_type"] = raw.map(lambda item: item.get("failure_type", "unknown"))
+    runs["steps"] = raw.map(lambda item: item.get("steps"))
+    runs["complexity"] = runs["task_id"].map(task_complexity)
     rows = []
     coverage = {}
     for architecture, part in runs.groupby("architecture", sort=True):
@@ -63,6 +79,18 @@ def summarize(database: Path, output_dir: Path) -> dict:
             "mean_inspection_calls": float(inspected["inspection_calls"].mean()) if len(inspected) else None,
         })
     pd.DataFrame(observability_rows).to_csv(output_dir / "observability.csv", index=False)
+    dimension_rows = []
+    for dimension in ("complexity", "steps", "observability", "failure_type"):
+        for (architecture, value), part in runs.groupby(["architecture", dimension], dropna=False, sort=True):
+            verified = part[part["passed"].notna()]
+            dimension_rows.append({
+                "dimension": dimension, "architecture": architecture,
+                "value": "missing" if pd.isna(value) else value,
+                "runs": len(part), "verified": len(verified),
+                "successes": int(verified["passed"].sum()),
+                "success_rate": float(verified["passed"].mean()) if len(verified) else None,
+            })
+    pd.DataFrame(dimension_rows).to_csv(output_dir / "dimensions.csv", index=False)
     verified_rows = summary.dropna(subset=["success_rate"])
     if not verified_rows.empty:
         figure, axis = plt.subplots(figsize=(7, 4))
@@ -103,6 +131,23 @@ def summarize(database: Path, output_dir: Path) -> dict:
                      f"{row['verified']} | {rate(row['success_rate'])} | "
                      f"{rate(row['mean_evidence_coverage'])} | "
                      f"{number(row['mean_inspection_calls'])} |")
+    lines.extend(["", "## Task complexity, agent steps, and failure type", "",
+                  "Complexity is classified before outcomes: a fixture with more than one non-test, "
+                  "non-document source file is multi-file; otherwise it is single-file. "
+                  "Steps are observed agent turns, so step groups are descriptive and cannot establish causation. "
+                  "Unrecognized historical task IDs have unknown complexity. Missing steps are shown separately.", "",
+                  "| Dimension | Architecture | Value | Runs | Verified | Successes | Success |",
+                  "|---|---|---|---:|---:|---:|---:|"])
+    for row in dimension_rows:
+        lines.append(f"| {row['dimension']} | {row['architecture']} | {row['value']} | "
+                     f"{row['runs']} | {row['verified']} | {row['successes']} | "
+                     f"{rate(row['success_rate'])} |")
+    lines.extend(["", "## Interpretation and limits", "",
+                  "The rows above describe recorded attempts only. Task difficulty, model behavior, and "
+                  "sampling variation may confound architecture comparisons. A comparison requires the same "
+                  "task hashes, model, runner image, and repeat counts for each architecture. "
+                  f"Matched coverage: {'yes' if matched else 'no'}. "
+                  "No confidence intervals or statistical significance are claimed."])
     (output_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"runs": len(runs), "verified": int(runs["passed"].notna().sum()),
             "matched_coverage": matched, "output_dir": str(output_dir)}

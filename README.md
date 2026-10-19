@@ -45,9 +45,9 @@ forgepilot compare --observability partial --repeats 3
 forgepilot analyze
 ```
 
-`compare` without `--task` runs all five tasks for all three architectures. `--repeats 3` makes three fresh attempts per architecture and task. Each architecture uses the same 12-model-turn and 24-tool-call limits; planning, critique, and reflection spend turns from that budget. A Docker preflight runs before any model call. If it fails, the attempt is recorded as unverified and the model is not called.
+`compare` without `--task` runs all nine tasks for all three architectures. `--repeats 3` makes three fresh attempts per architecture and task. Each architecture uses the same 12-model-turn and 24-tool-call limits; planning, critique, and reflection spend turns from that budget. A Docker preflight runs before any model call. If it fails, the attempt is recorded as unverified and the model is not called.
 
-Raw records go to `results/experiments.sqlite3` by default. Use `--output` on `attempt` or `compare` to select another database. `forgepilot analyze --database PATH --output-dir PATH` writes `summary.csv`, `observability.csv`, `report.md`, and (when verified runs exist) `success_rate.png`. The report flags uneven task coverage. It provides descriptive rates only.
+Raw records go to `results/experiments.sqlite3` by default. Use `--output` on `attempt` or `compare` to select another database. `forgepilot analyze --database PATH --output-dir PATH` writes `summary.csv`, `observability.csv`, `dimensions.csv`, `report.md`, and (when verified runs exist) `success_rate.png`. The report flags uneven task coverage. It provides descriptive rates only. [RESEARCH_REPORT.md](RESEARCH_REPORT.md) records the study method and current evidence status.
 
 ## Measurements
 
@@ -58,7 +58,7 @@ Raw records go to `results/experiments.sqlite3` by default. Use `--output` on `a
 - **Token usage:** prompt and completion counts reported by the model API. Missing usage stays blank.
 - **Recovery rate:** verified runs with at least one failed tool call that later pass grading, divided by verified runs with a failed tool call.
 
-Each SQLite row also stores the fixture hash, model name, runner image tag, resource limits, steps, errors, raw grading evidence, and which clue files the agent read. `observability.csv` reports success and mean clue coverage by architecture and information availability. Clue coverage counts only explicit `read_file` calls; an agent may discover information through other tools. The analysis does not infer statistical significance.
+Each SQLite row also stores the fixture hash, model name, runner image tag, resource limits, steps, errors, raw grading evidence, and which clue files the agent read. `observability.csv` reports success and mean clue coverage by architecture and information availability. `dimensions.csv` reports sample counts and success by architecture, fixture complexity, observed steps, information availability, and failure type. Complexity uses the number of non-test source files in the fixed fixture; it is a structural proxy, not a validated difficulty score. Clue coverage counts only explicit `read_file` calls; an agent may discover information through other tools. The analysis does not infer statistical significance.
 
 ## Code layout
 

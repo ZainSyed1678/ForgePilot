@@ -1,6 +1,6 @@
 import csv
 
-from forgepilot.analysis import summarize
+from forgepilot.analysis import summarize, task_complexity
 from forgepilot.storage import save_run
 
 
@@ -12,6 +12,7 @@ def record(run_id, architecture, passed, recovered, tool_failures):
         "repeat_index": 1, "observability": "partial" if architecture == "reflective" else "full",
         "evidence_coverage": 0.5 if architecture == "reflective" else None,
         "inspection_calls": 2, "passed": passed, "test_passed": 2 if passed else 1,
+        "failure_type": "bug", "steps": 3 if architecture == "basic" else None,
         "test_total": 2, "regressions": 0 if passed else 1, "baseline_passed": 1,
         "agent_seconds": 2.0, "wall_seconds": 3.0,
         "prompt_tokens": 10, "completion_tokens": 5,
@@ -37,5 +38,18 @@ def test_analysis_uses_only_verified_runs_and_writes_outputs(tmp_path):
     assert rows["reflective"]["success_rate"] == ""
     assert (output / "report.md").exists()
     assert (output / "observability.csv").exists()
+    with (output / "dimensions.csv").open(newline="") as stream:
+        dimensions = list(csv.DictReader(stream))
+    assert any(row["dimension"] == "steps" and row["value"] == "3.0"
+               and row["verified"] == "2" and row["success_rate"] == "0.5"
+               for row in dimensions)
+    assert any(row["dimension"] == "failure_type" and row["value"] == "bug"
+               for row in dimensions)
+    assert "Interpretation and limits" in (output / "report.md").read_text()
     assert "Information availability" in (output / "report.md").read_text()
     assert (output / "success_rate.png").exists()
+
+
+def test_complexity_uses_fixture_structure():
+    assert task_complexity("negative_total") == "single-file"
+    assert task_complexity("missing-task") == "unknown"
