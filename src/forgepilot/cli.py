@@ -4,6 +4,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from forgepilot.architectures import ARCHITECTURES
 from forgepilot.benchmark import load_tasks
 from forgepilot.runner import run_task
 from forgepilot.tools import RepositoryTools
@@ -30,7 +31,11 @@ def main() -> int:
     sub.add_parser("tasks")
     attempt = sub.add_parser("attempt")
     attempt.add_argument("task_id")
+    attempt.add_argument("--architecture", choices=ARCHITECTURES, default="basic")
     attempt.add_argument("--output", type=Path, default=Path("results/runs.jsonl"))
+    compare = sub.add_parser("compare")
+    compare.add_argument("--task", action="append", dest="task_ids")
+    compare.add_argument("--output", type=Path, default=Path("results/runs.jsonl"))
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
     try:
@@ -39,7 +44,16 @@ def main() -> int:
             return 0
         if args.action == "attempt":
             import json
-            print(json.dumps(run_task(args.task_id, args.output), indent=2))
+            print(json.dumps(run_task(args.task_id, args.output, architecture=args.architecture), indent=2))
+            return 0
+        if args.action == "compare":
+            import json
+            task_ids = args.task_ids or [task.id for task in load_tasks()]
+            for task_id in task_ids:
+                for architecture in ARCHITECTURES:
+                    result = run_task(task_id, args.output, architecture=architecture)
+                    print(json.dumps({"task_id": task_id, "architecture": architecture,
+                                      "passed": result["passed"]}))
             return 0
         tools = RepositoryTools(args.repo)
         if args.action == "files":

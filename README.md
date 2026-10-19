@@ -1,6 +1,6 @@
 # ForgePilot
 
-ForgePilot is a small research platform for testing coding agents on reproducible software engineering tasks. Phase 2 adds one basic tool-using agent and five benchmark tasks. It does not yet compare architectures or analyze results statistically.
+ForgePilot is a small research platform for testing coding agents on reproducible software engineering tasks. Phase 3 adds planner–executor–critic and reflective agents alongside the basic tool-using agent. All three run against the same five tasks, model API, tools, and budgets. No benchmark results or statistical analysis are claimed yet.
 
 ## Setup
 
@@ -36,14 +36,18 @@ To use a compatible Chat Completions API, set `FORGEPILOT_API_KEY` and `FORGEPIL
 
 ```sh
 forgepilot tasks
-forgepilot attempt negative_total
+forgepilot attempt negative_total --architecture basic
+forgepilot attempt negative_total --architecture planner-executor-critic
+forgepilot attempt negative_total --architecture reflective
+forgepilot compare --task negative_total
 ```
 
-Attempts are limited to 12 model turns and 24 tool calls. Results append to `results/runs.jsonl`, with task ID, model, steps, final message, grading output, and an explicit pass/fail/unverified value. Run each task in a fresh temporary repository. You can select a different output file with `--output`.
+Each architecture is limited to 12 model turns and 24 tool calls. Planning, critique, and reflection turns count toward the same limit. Results append to `results/runs.jsonl`, with task ID, architecture, model, steps, final message, grading output, and an explicit pass/fail/unverified value. Run each task in a fresh temporary repository. You can select a different output file with `--output`.
 
 ## Code layout
 
-- `agent.py`: one basic tool-calling loop and the model HTTP client.
+- `agent.py`: the basic tool-calling loop, shared budgets, and model HTTP client.
+- `architectures.py`: planner–executor–critic and reflective agent flows.
 - `tools.py`: file, Git, Docker, and pytest operations.
 - `benchmark.py`: fixture loading, workspace setup, and acceptance grading.
 - `runner.py`: one isolated attempt and JSONL result recording.
@@ -51,4 +55,4 @@ Attempts are limited to 12 model turns and 24 tool calls. Results append to `res
 
 ## Current limits
 
-The agent has one architecture, with no planning or reflection. The benchmark is intentionally small and its acceptance tests are not a security boundary against an adversarial agent. The local Docker engine is required for actual attempts and grading; a missing engine yields an unverified result. No live model attempts or benchmark success claims are included here. Repeated runs, cost metrics, SQLite storage, and comparative analysis are later phases.
+The three architectures have not yet been evaluated with live model runs. A multi-agent architecture is deferred until baseline results show a reason to add its complexity. The benchmark is intentionally small and its acceptance tests are not a security boundary against an adversarial agent. The local Docker engine is required for actual attempts and grading; a missing engine yields an unverified result. No live model attempts or benchmark success claims are included here. Repeated runs, cost metrics, SQLite storage, and statistical analysis are later phases. The `compare` command runs three paid attempts per selected task (15 attempts by default).

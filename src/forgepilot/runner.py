@@ -7,12 +7,15 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from forgepilot.agent import BasicAgent, ChatModel
+from forgepilot.agent import ChatModel
+from forgepilot.architectures import ARCHITECTURES
 from forgepilot.benchmark import grade, load_tasks, prepare
 from forgepilot.tools import RepositoryTools
 
 
-def run_task(task_id: str, output: Path, *, model=None, image: str | None = None) -> dict:
+def run_task(task_id: str, output: Path, *, architecture: str = "basic", model=None, image: str | None = None) -> dict:
+    if architecture not in ARCHITECTURES:
+        raise ValueError(f"unknown architecture: {architecture}")
     tasks = {task.id: task for task in load_tasks()}
     if task_id not in tasks:
         raise ValueError(f"unknown task: {task_id}")
@@ -24,14 +27,14 @@ def run_task(task_id: str, output: Path, *, model=None, image: str | None = None
         active_model = model or ChatModel()
         agent_error = None
         try:
-            attempt = BasicAgent(active_model, tools).attempt(task.prompt)
+            attempt = ARCHITECTURES[architecture](active_model, tools).attempt(task.prompt)
         except Exception as exc:
             agent_error = f"{type(exc).__name__}: {exc}"
             attempt = None
         result = grade(task, workspace, tools)
         if agent_error:
             result["passed"] = None
-        record = {"task_id": task.id, "time_utc": datetime.now(timezone.utc).isoformat(),
+        record = {"task_id": task.id, "architecture": architecture, "time_utc": datetime.now(timezone.utc).isoformat(),
                   "model": getattr(active_model, "model", type(active_model).__name__),
                   "steps": attempt.steps if attempt else 0,
                   "stopped_reason": attempt.stopped_reason if attempt else "agent_error",

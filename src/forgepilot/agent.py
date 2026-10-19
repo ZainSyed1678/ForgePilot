@@ -26,8 +26,11 @@ class ChatModel:
         self.model = os.environ["FORGEPILOT_MODEL"]
         self.key = os.environ["FORGEPILOT_API_KEY"]
 
-    def complete(self, messages: list[dict]) -> dict:
-        payload = json.dumps({"model": self.model, "messages": messages, "tools": SCHEMAS}).encode()
+    def complete(self, messages: list[dict], *, tools_enabled: bool = True) -> dict:
+        body = {"model": self.model, "messages": messages}
+        if tools_enabled:
+            body["tools"] = SCHEMAS
+        payload = json.dumps(body).encode()
         request = Request(self.url, data=payload, headers={
             "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
         with urlopen(request, timeout=60) as response:
@@ -42,14 +45,26 @@ class AgentResult:
     stopped_reason: str
 
 
-class BasicAgent:
-    def __init__(self, model, tools: RepositoryTools, *, max_steps: int = 12, max_tool_calls: int = 24):
+class AgentSession:
+    """Shared model and tool budgets for every architecture."""
+
+    def __init__(self, model, tools: RepositoryTools, max_steps: int, max_tool_calls: int):
         if max_steps <= 0 or max_tool_calls <= 0:
             raise ValueError("budgets must be positive")
-        self.model, self.tools, self.max_steps = model, tools, max_steps
-        self.max_tool_calls = max_tool_calls
+        self.model, self.tools = model, tools
+        self.max_steps, self.max_tool_calls = max_steps, max_tool_calls
+        self.steps = 0
+        self.tool_calls = 0
 
-    def _call(self, name: str, arguments: dict) -> object:
+    def complete(self, messages: list[dict], *, tools_enabled: bool = True) -> dict | None:
+        if self.steps >= self.max_steps:
+            return None
+        self.steps += 1
+        if tools_enabled:
+            return self.model.complete(messages)
+        return self.model.complete(messages, tools_enabled=False)
+
+    def call(self, name: str, arguments: dict) -> object:
         if not isinstance(arguments, dict):
             raise ValueError("tool arguments must be an object")
         if name == "list_files":
@@ -67,27 +82,44 @@ class BasicAgent:
             return self.tools.git("status", "--short").__dict__
         raise ValueError(f"unknown tool: {name}")
 
+    def execute(self, messages: list[dict], message: dict) -> tuple[bool, bool]:
+        """Append tool observations; return (failure_seen, tool_limit_hit)."""
+        calls = message.get("tool_calls") or []
+        messages.append({"role": "assistant", "content": message.get("content"), "tool_calls": calls})
+        failed = False
+        for call in calls:
+            if self.tool_calls >= self.max_tool_calls:
+                return failed, True
+            self.tool_calls += 1
+            try:
+                fn = call["function"]
+                result = self.call(fn["name"], json.loads(fn["arguments"]))
+                failed = failed or isinstance(result, dict) and result.get("returncode", 0) != 0
+                output = json.dumps(result)[:12000]
+            except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
+                failed = True
+                output = json.dumps({"error": str(exc)})
+            messages.append({"role": "tool", "tool_call_id": call["id"], "content": output})
+        return failed, False
+
+
+def initial_messages(task: str) -> list[dict]:
+    return [
+        {"role": "system", "content": "You are a coding agent. Inspect the repository, make a focused fix, run relevant tests, then summarize. Use tools for evidence. Do not edit tests to claim success."},
+        {"role": "user", "content": task},
+    ]
+
+
+class BasicAgent:
+    def __init__(self, model, tools: RepositoryTools, *, max_steps: int = 12, max_tool_calls: int = 24):
+        self.session = AgentSession(model, tools, max_steps, max_tool_calls)
+
     def attempt(self, task: str) -> AgentResult:
-        messages = [
-            {"role": "system", "content": "You are a coding agent. Inspect the repository, make a focused fix, run relevant tests, then summarize. Use tools for evidence. Do not edit tests to claim success."},
-            {"role": "user", "content": task},
-        ]
-        tool_calls_used = 0
-        for step in range(1, self.max_steps + 1):
-            message = self.model.complete(messages)
-            calls = message.get("tool_calls") or []
-            if not calls:
-                return AgentResult(message.get("content") or "", step, "finished")
-            messages.append({"role": "assistant", "content": message.get("content"), "tool_calls": calls})
-            for call in calls:
-                if tool_calls_used >= self.max_tool_calls:
-                    return AgentResult("", step, "tool_limit")
-                tool_calls_used += 1
-                try:
-                    fn = call["function"]
-                    result = self._call(fn["name"], json.loads(fn["arguments"]))
-                    output = json.dumps(result)[:12000]
-                except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
-                    output = json.dumps({"error": str(exc)})
-                messages.append({"role": "tool", "tool_call_id": call["id"], "content": output})
-        return AgentResult("", self.max_steps, "step_limit")
+        messages = initial_messages(task)
+        while message := self.session.complete(messages):
+            if not message.get("tool_calls"):
+                return AgentResult(message.get("content") or "", self.session.steps, "finished")
+            _, limit = self.session.execute(messages, message)
+            if limit:
+                return AgentResult("", self.session.steps, "tool_limit")
+        return AgentResult("", self.session.steps, "step_limit")
