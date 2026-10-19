@@ -1,0 +1,10 @@
+{
+  "id": "config_dependency",
+  "prompt": "The app fails to read its default retry limit. Trace the dependency between app.py and settings.py and make retry_limit() return the configured integer; default is 3.",
+  "files": {
+    "app.py": "from settings import DEFAULT_RETRIES\n\ndef retry_limit():\n    return int(DEFAULT_RETRIES)\n",
+    "settings.py": "DEFAULT_RETRIES = \"three\"\n",
+    "tests/test_app.py": "from app import retry_limit\n\ndef test_default_retries():\n    assert retry_limit() == 3\n"
+  },
+  "acceptance": "from app import retry_limit\n\ndef test_retry_limit_is_integer():\n    assert retry_limit() == 3\n    assert isinstance(retry_limit(), int)\n"
+}

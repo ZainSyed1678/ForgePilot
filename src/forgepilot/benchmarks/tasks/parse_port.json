@@ -1,0 +1,9 @@
+{
+  "id": "parse_port",
+  "prompt": "Fix parse_port in ports.py. It should accept an integer or a numeric string and reject values outside 1..65535 with ValueError. The current implementation has an unexpected runtime error on strings.",
+  "files": {
+    "ports.py": "def parse_port(value):\n    if value < 1 or value > 65535:\n        raise ValueError(\"invalid port\")\n    return int(value)\n",
+    "tests/test_ports.py": "from ports import parse_port\n\ndef test_string_port():\n    assert parse_port(\"8080\") == 8080\n"
+  },
+  "acceptance": "import pytest\nfrom ports import parse_port\n\ndef test_valid_and_invalid_ports():\n    assert parse_port(\"8080\") == 8080\n    assert parse_port(443) == 443\n    with pytest.raises(ValueError):\n        parse_port(\"0\")\n    with pytest.raises(ValueError):\n        parse_port(\"65536\")\n"
+}

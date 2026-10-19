@@ -1,6 +1,6 @@
 # ForgePilot
 
-Phase 1 provides a small repository tool layer for future coding agents. It supports file inspection and edits, read-only Git inspection, Docker-isolated terminal commands, pytest, and patch output. No LLM agent, benchmark runner, or experiment storage is implemented yet.
+ForgePilot is a small research platform for testing coding agents on reproducible software engineering tasks. Phase 2 adds one basic tool-using agent and five benchmark tasks. It does not yet compare architectures or analyze results statistically.
 
 ## Setup
 
@@ -9,14 +9,12 @@ Requires Python 3.11+, Git, and Docker with a running engine. From this director
 ```sh
 python -m pip install -e ".[dev]"
 docker build -t forgepilot-runner:phase1 .
-python -m pytest
+python -m pytest -q
 ```
 
-Set `FORGEPILOT_DOCKER_IMAGE=forgepilot-runner:phase1` (or pass it in your shell environment). Other options are in [`.env.example`](.env.example); the application reads environment variables directly. Do not put secrets in the repository.
+The runner uses `forgepilot-runner:phase1` by default. Docker runs commands without network access and with CPU, memory, process, and wall-time limits. See [`.env.example`](.env.example) for configuration. Use a disposable repository; the container can modify it.
 
-## Use
-
-Point the CLI at an existing Git repository:
+## Repository tools
 
 ```sh
 forgepilot --repo /path/to/repo files
@@ -28,15 +26,29 @@ forgepilot --repo /path/to/repo write src/example.py 'new content'
 forgepilot --repo /path/to/repo patch
 ```
 
-The Python API is `forgepilot.tools.RepositoryTools`. Its `run` method takes an argument list, without a shell. Docker runs without network access and with CPU, memory, process, and wall-time limits. Run against disposable repositories: the container has write access to the selected repository so it can modify code. Git inspection runs on the host.
+The same operations are available through `forgepilot.tools.RepositoryTools`. Git inspection runs on the host; terminal and pytest commands run in Docker. Patch output includes tracked changes. Stage new files in Git before requesting a patch that includes them.
 
-## Architecture
+## Benchmark
 
-`tools.py` owns filesystem, Git, and Docker operations. `cli.py` is a thin manual interface. Future agents can call the same tool methods. Phase 1 does not automatically generate code or decide which commands to run.
+Five fixed tasks cover arithmetic bugs, a failing text test, configuration dependency discovery, empty-input runtime failure, and port parsing. Each task has a prompt, starter files, and an acceptance test. The agent sees the prompt and starter files. The runner injects the acceptance test only after the attempt and grades it with pytest. A model's final message never determines success.
 
-## Limitations
+To use a compatible Chat Completions API, set `FORGEPILOT_API_KEY` and `FORGEPILOT_MODEL`. `FORGEPILOT_API_URL` defaults to OpenAI's Chat Completions endpoint. Do not commit credentials. A live attempt calls a paid model API and can incur charges.
 
-- Docker must be available and the runner image must be built locally.
-- Patch output includes tracked changes; add new files to Git's index before calling `patch`.
-- The runner image contains Python and pytest only. Repositories needing other dependencies need a compatible custom image.
-- Docker resource flags are an initial boundary, not a hardened sandbox for hostile code.
+```sh
+forgepilot tasks
+forgepilot attempt negative_total
+```
+
+Attempts are limited to 12 model turns and 24 tool calls. Results append to `results/runs.jsonl`, with task ID, model, steps, final message, grading output, and an explicit pass/fail/unverified value. Run each task in a fresh temporary repository. You can select a different output file with `--output`.
+
+## Code layout
+
+- `agent.py`: one basic tool-calling loop and the model HTTP client.
+- `tools.py`: file, Git, Docker, and pytest operations.
+- `benchmark.py`: fixture loading, workspace setup, and acceptance grading.
+- `runner.py`: one isolated attempt and JSONL result recording.
+- `cli.py`: manual commands.
+
+## Current limits
+
+The agent has one architecture, with no planning or reflection. The benchmark is intentionally small and its acceptance tests are not a security boundary against an adversarial agent. The local Docker engine is required for actual attempts and grading; a missing engine yields an unverified result. No live model attempts or benchmark success claims are included here. Repeated runs, cost metrics, SQLite storage, and comparative analysis are later phases.

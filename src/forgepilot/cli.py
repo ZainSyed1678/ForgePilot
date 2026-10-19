@@ -4,6 +4,8 @@ import argparse
 import logging
 from pathlib import Path
 
+from forgepilot.benchmark import load_tasks
+from forgepilot.runner import run_task
 from forgepilot.tools import RepositoryTools
 
 
@@ -25,10 +27,21 @@ def main() -> int:
     tests = sub.add_parser("test")
     tests.add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("patch")
+    sub.add_parser("tasks")
+    attempt = sub.add_parser("attempt")
+    attempt.add_argument("task_id")
+    attempt.add_argument("--output", type=Path, default=Path("results/runs.jsonl"))
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
-    tools = RepositoryTools(args.repo)
     try:
+        if args.action == "tasks":
+            print("\n".join(task.id for task in load_tasks()))
+            return 0
+        if args.action == "attempt":
+            import json
+            print(json.dumps(run_task(args.task_id, args.output), indent=2))
+            return 0
+        tools = RepositoryTools(args.repo)
         if args.action == "files":
             print("\n".join(tools.list_files()))
         elif args.action == "read":

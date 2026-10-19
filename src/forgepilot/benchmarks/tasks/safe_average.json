@@ -1,0 +1,9 @@
+{
+  "id": "safe_average",
+  "prompt": "Fix average(values) in stats.py so empty input returns 0 rather than raising at runtime, while preserving normal averages.",
+  "files": {
+    "stats.py": "def average(values):\n    return sum(values) / len(values)\n",
+    "tests/test_stats.py": "from stats import average\n\ndef test_empty():\n    assert average([]) == 0\n"
+  },
+  "acceptance": "from stats import average\n\ndef test_average_cases():\n    assert average([]) == 0\n    assert average([2, 4, 6]) == 4\n"
+}

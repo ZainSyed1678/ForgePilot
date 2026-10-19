@@ -1,0 +1,9 @@
+{
+  "id": "slug_spacing",
+  "prompt": "Fix slugify in slug.py. It should trim surrounding whitespace, collapse runs of spaces, and use lowercase hyphenated words. The included test currently fails.",
+  "files": {
+    "slug.py": "def slugify(text):\n    return text.lower().replace(\" \", \"-\")\n",
+    "tests/test_slug.py": "from slug import slugify\n\ndef test_spacing():\n    assert slugify(\"  Hello   World \") == \"hello-world\"\n"
+  },
+  "acceptance": "from slug import slugify\n\ndef test_slug_cases():\n    assert slugify(\"  Mixed   CASE \") == \"mixed-case\"\n    assert slugify(\"One Two\") == \"one-two\"\n"
+}

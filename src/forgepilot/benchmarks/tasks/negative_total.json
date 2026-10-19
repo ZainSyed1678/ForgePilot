@@ -1,0 +1,9 @@
+{
+  "id": "negative_total",
+  "prompt": "Fix total(values) in calculator.py so it sums positive and negative integers correctly. Existing tests must pass.",
+  "files": {
+    "calculator.py": "def total(values):\n    return sum(abs(value) for value in values)\n",
+    "tests/test_calculator.py": "from calculator import total\n\ndef test_total_with_negative():\n    assert total([4, -2, 1]) == 3\n"
+  },
+  "acceptance": "from calculator import total\n\ndef test_empty_and_negative_total():\n    assert total([]) == 0\n    assert total([-5, 2, -1]) == -4\n"
+}
